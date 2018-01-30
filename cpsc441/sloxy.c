@@ -23,11 +23,18 @@ int lstn_sock;
 //Catches ctrl+c in terminal to cleanly close program
 void catcher(int sig){
   close(lstn_sock);
+  printf("listen socket closed.\n");
   exit(0);
+}
+
+//Converts integer to string
+char* int2str(int i){
+  
 }
 
 int main(){
   signal(SIGINT, catcher);
+  signal(SIGSEGV, catcher);
   
   //First, receive request from Web Browser
   //Initialize server address
@@ -72,6 +79,7 @@ int main(){
       exit(-1);
     }
     else{
+      printf("-------------------------------------------");
       printf("\nConnection accepted from client.\n");
     }
 
@@ -80,7 +88,7 @@ int main(){
     char s_message_out[1024];
     int c_recv_status;
     c_recv_status = recv(data_sock, c_message_in, sizeof(c_message_in), 0);
-
+    
     //Check successful receive
     if (c_recv_status < 0){
       printf("Error while receiving message.\n");
@@ -97,6 +105,7 @@ int main(){
     char host[1024];
     char URL[1024];
     char PATH[1024];
+    memset(PATH, '\0', sizeof(PATH));
     int i;
 
     //Find and parse GET request, retaining URL for later
@@ -124,15 +133,15 @@ int main(){
     //Echo host and path
     printf("Connection successful to:\n");
     printf("Host: %s\n", host);
-    printf("Path: %s\n...\n", PATH);
+    printf("Path: %s\n\n", PATH);
 
     //Determine if destination is an html file
-    bool is_html = false;
+    int is_html = 0;
     if(strstr(PATH, ".html") != NULL){
-      is_html = true;
+      is_html = 1;
       printf("!!! HTML file detected !!!\n\n");
     }
-
+    
     //Create TCP socket for connecting to web server
     struct sockaddr_in addr_server;
     struct hostent *server;
@@ -141,6 +150,7 @@ int main(){
     server = gethostbyname(host);
     if (server == NULL){
       printf("Error in getting host by name from Web Server.\n");
+      exit(-1);
     }
     else{
       printf("Web server = %s\n", server->h_name);
@@ -148,23 +158,172 @@ int main(){
 
     //Initialize socket for web server
     memset(&addr_server, 0, sizeof(addr_server));
-    memset(&addr_server.sin_addr.s_addr, server->h_addr, server->h_length);
+    memcpy(&addr_server.sin_addr.s_addr, server->h_addr, server->h_length);
     addr_server.sin_family = AF_INET;
     addr_server.sin_port = htons(80);
+    
+    //Determine size of web page (Content-Length)
+    char *content_length;
+    int content_len;
+    int web_sock;
+    int connect_status;
+    
+    if (is_html){
+      char s_message_copy[1024];
+      char s_message_probe[1024];
+      char w_message_probe[10000];
+      memset(s_message_probe, '\0', sizeof(s_message_probe));
+      strcpy(s_message_copy, s_message_out);
 
+      //Manually change GET to HEAD :^)
+      s_message_probe[0] = 'H';
+      s_message_copy[0] = 'E';
+      s_message_copy[1] = 'A';
+      s_message_copy[2] = 'D';
+      strcat(s_message_probe, s_message_copy);
+
+      //Create socket to connect to web server
+      web_sock = socket(AF_INET, SOCK_STREAM, 0);
+      if (web_sock < 0){
+	printf("Error in creating web server socket.\n");
+	exit(-1);
+      }
+      else{
+	printf("Web server socket created.\n");
+      }
+
+      //Connect to the web server's socket
+      connect_status = connect(web_sock, (struct sockaddr*) &addr_server, sizeof(addr_server));
+      if(connect_status < 0){
+	printf("Error in connecting to web server socket.\n");
+	exit(-1);
+      }
+      else{
+	printf("Established connection to web server.\n");
+      }
+    
+      //Send HEAD request to web server
+      int web_probe_status = send(web_sock, s_message_probe, sizeof(s_message_probe),0);
+      if (web_probe_status < 0){
+	printf("Error in HEAD request.\n");
+	exit(-1);
+      }
+      else{
+	printf("HEAD request successful\n");
+      }
+
+      //Receive HEAD response
+      int web_probe_recv_status = recv(web_sock, w_message_probe, sizeof(w_message_probe), 0);
+      if (web_probe_recv_status < 0){
+      	printf("Error in recieving HEAD response.\n");
+      	exit(-1);
+      }
+      else{
+      	printf("HEAD response successful.\n");
+      }
+
+      //Parse out "Content-Length"
+      content_length = strstr(w_message_probe, "Content-Length: ");
+      content_length = strtok(content_length, "\r\n");
+      sscanf(content_length, "Content-Length: %d", &content_len);
+    }
+    
     //Create socket to connect to web server
-    int web_sock = socket(AF_INET, SOCK_STREAM, 0);
+    web_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (web_sock < 0){
       printf("Error in creating web server socket.\n");
+      exit(-1);
     }
     else{
-      printf("Web server socket creation successful.\n");
+      printf("Web server socket created.\n");
     }
 
     //Connect to the web server's socket
-    int connect_status;
-    connect_status = connect(web_set, (struct sockaddr*) &addr_server, size
-    
+    connect_status = connect(web_sock, (struct sockaddr*) &addr_server, sizeof(addr_server));
+    if(connect_status < 0){
+      printf("Error in connecting to web server socket.\n");
+      exit(-1);
+    }
+    else{
+      printf("Established connection to web server.\n");
+    }
+
+    //Loop sending if html
+    int send_range = 100;
+    int low_bound = 0;
+    int high_bound = 0 + send_range;
+    char low_bnd_str[5];
+    char high_bnd_str[5];
+    char range_request[1024];
+    char s_msg_out_rng[1024];
+    do{
+      strcpy(s_msg_out_rng, s_message_out);
+      
+      //Create Range Request header
+      memset(range_request, '\0', sizeof(range_request));
+      memset(low_bnd_str, '\0', sizeof(low_bnd_str));
+      memset(high_bnd_str, '\0', sizeof(high_bnd_str));
+      
+      if(is_html){
+	strcat(range_request, "\nRange: bytes=");
+	strcat(range_request, itoa(low_bound));
+	strcat(range_request, "-");
+	if(high_bound > content_len){
+	  strcat(range_request, itoa(content_len));
+	}
+	else{
+	  strcat(range_request, itoa(high_bound));
+	}
+
+	//Append Range Request header to GET request
+	strcat(s_msg_out_rng, range_request);
+      }
+      
+      //Send HTTP request of the client to web server
+      int web_send_status = send(web_sock, s_msg_out_rng, sizeof(s_msg_out_rng), 0);
+      if (web_send_status < 0){
+	printf("Error in sending HTTP request to web server.\n");
+	exit(-1);
+      }
+      else{
+	printf("HTTP request sent successfully to web server.\n");
+	printf("\n\n%s\n\n",s_msg_out_rng);
+      }
+
+      //Recieve HTTP response from web server
+      char w_message_in[10000];
+      int web_recv_status = recv(web_sock, w_message_in, sizeof(w_message_in), 0);
+      if (web_recv_status < 0){
+	printf("Error receiving HTTP request from web server.\n");
+	exit(-1);
+      }
+      else{
+	printf("HTTP response received successfully from web server.\n");
+	//printf("\n\n%s\n\n",w_message_in);
+      }
+
+      //Send data to client
+      int c_send_status = send(data_sock, w_message_in, sizeof(w_message_in), 0);
+      if (c_send_status < 0){
+	printf("Error in sending data to client.\n");
+	exit(-1);
+      }
+      else{
+	printf("Data sent successfully to client\n");
+      }
+
+      low_bound += send_range;
+      high_bound += send_range;
+      if (low_bound > content_len){
+	break;
+      }
+    }while(is_html)
+
+    //Close socket connection with web server
+    close(web_sock);
+    //Close socket connection with client
+    close(data_sock);
+    printf("Transmission complete\n\n");
   }
   
   close(lstn_sock);
