@@ -24,6 +24,25 @@ char* itoa(int i){
   return str;
 }
 
+// Concatenates all information required for UDP block
+char* create_udp_block(char* name, char* size, char* block, int leg, char* data, int datasize){
+  // UDP block = Filename | File size | Block size |  Leg flag |  Data   
+  char *UDP_block = (char*)malloc(datasize);
+  char *separator = "|";
+
+  strcat(UDP_block, name);
+  strcat(UDP_block, separator);
+  strcat(UDP_block, size);
+  strcat(UDP_block, separator);
+  strcat(UDP_block, block);
+  strcat(UDP_block, separator);
+  strcat(UDP_block, itoa(leg));
+  strcat(UDP_block, separator);
+  strcat(UDP_block, data);
+  
+  return UDP_block;
+}
+
 int main(int argc, char* argv[]) {
   // Check arguments for filename
   if (argc != 2){
@@ -33,9 +52,10 @@ int main(int argc, char* argv[]) {
   // Create octoblock buffers
   char buffer[_256KB];
   char octo[8][1111];
-  char tiny_octo[8];
+  char tiny_octo[8][1];
   char c;
   int leg, size = 0;
+  int portions, remainder, has_tiny_blocks = 0;
   
   // Open file and read into buffer
   FILE *fp;
@@ -54,8 +74,12 @@ int main(int argc, char* argv[]) {
 
   // Fill octolegs evenly if less than 8888 bytes
   if (size <= 8888){
-    int portions = size / 8;
-    int remainder = size % 8;
+    portions = size / 8;
+    remainder = size % 8;
+
+    if (remainder > 0)
+      has_tiny_blocks = 1;
+    
     int index = 0;
 
     for (int i = 0; i < 8; i++){
@@ -66,10 +90,12 @@ int main(int argc, char* argv[]) {
     }
 
     for (int i = 0; i < 8; i++){
-      tiny_octo[i] = buffer[index];
+      tiny_octo[i][1] = buffer[index];
       index++;
     }
   }
+
+  printf("\n%s\n", octo[0]);
   
   const char* server_name = "localhost";//loopback
   const int server_port = PORT;
@@ -84,7 +110,6 @@ int main(int argc, char* argv[]) {
   
   inet_pton(AF_INET, server_name, &server_address.sin_addr);
   
-  
   server_address.sin_port = htons(server_port);
   
   // open socket
@@ -95,24 +120,15 @@ int main(int argc, char* argv[]) {
   }
   printf("client socket created\n");
 
-  // send data
-  // First, send the size of the file
-  
-  int len =
-    sendto(sock, itoa(size), size, 0,
-  	   (struct sockaddr*)&server_address, sizeof(server_address));
-  printf("size of message has been sent to server\n");
+  // Create and send UDP blocks
+  for (int i = 0; i < 1; i++){
+    char *UDP_block = create_udp_block(argv[1], itoa(size), itoa(portions), i, octo[i], 1143);
 
-  for (int i = 0; i < 8; i++){
-    
+    printf("%s", UDP_block);
+
+    sendto(sock, UDP_block, sizeof(UDP_block),0,
+  	   (struct sockaddr*)&server_address, sizeof(server_address));
   }
-  
-  // received echoed data back
-  char recv_buffer[100];
-  int recv_bytes=recvfrom(sock, recv_buffer, len, 0, NULL, NULL);
-  printf("received bytes = %d\n",recv_bytes);
-  recv_buffer[len] = '\0';
-  printf("recieved: '%s'\n", recv_buffer);
 
   // close the socket
   close(sock);

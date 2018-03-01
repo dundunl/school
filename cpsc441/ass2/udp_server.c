@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdbool.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -50,25 +51,28 @@ int main(int argc, char *argv[]) {
   struct sockaddr_in client_address;
   int client_address_len = sizeof(client_address);
   char client_name[100];
+  char octoblock[8888];
+  
   // run indefinitely
   while (true) {
-    char buffer[500];
+     char buffer[1143];
+     char header_buff [100];
+     int leg;
 
-    // read content into buffer from an incoming client
-    int len = recvfrom(sock, buffer, sizeof(buffer), 0,
-		       (struct sockaddr *)&client_address,
-		       &client_address_len);
-		
-    // inet_ntoa prints user friendly representation of the
-    // ip address
-    buffer[len] = '\0';
-    printf("received: '%s' from client %s on port %d\n", buffer,
-	   inet_ntoa(client_address.sin_addr),ntohs(client_address.sin_port));
-		
-    // send same content back to the client ("echo")
-    int sent_len = sendto(sock, buffer, len, 0, (struct sockaddr *)&client_address,
-			  client_address_len);
-    printf("server sent back message:%d\n",sent_len);
+     
+     }
+     
+     // inet_ntoa prints user friendly representation of the
+     // ip address
+     /* buffer[len] = '\0'; */
+     /* printf("received: '%s' from client %s on port %d\n", buffer, */
+     /* 	   inet_ntoa(client_address.sin_addr),ntohs(client_address.sin_port)); */
+     
+     
+     // send same content back to the client ("echo")
+     /* int sent_len = sendto(sock, buffer, len, 0, (struct sockaddr *)&client_address, */
+     /* 			  client_address_len); */
+     /* printf("server sent back message:%d\n",sent_len); */
 
   }
   close(sock);
