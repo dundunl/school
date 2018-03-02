@@ -11,8 +11,11 @@
 #include <stdbool.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #define PORT 8001
 
@@ -51,30 +54,72 @@ int main(int argc, char *argv[]) {
   struct sockaddr_in client_address;
   int client_address_len = sizeof(client_address);
   char client_name[100];
+  char octolegs[8][1112];
   char octoblock[8888];
-  
+  int transfer_complete = 0;
+  char filename[100];
+
   // run indefinitely
   while (true) {
-     char buffer[1143];
-     char header_buff [100];
-     int leg;
+     char buffer[2000];
+     char *splitter;
+     char *filesize, *legsize, leg_char,  *data;
+     int leg_num;
 
-     
+     // Clear buffer
+     memset(buffer, '\0', sizeof(buffer));
+
+     // Receive UDP block transfer
+     recvfrom(sock, buffer, sizeof(buffer), 0,
+	      (struct sockaddr *)&client_address, &client_address_len);
+
+     printf("%s\n", buffer);
+     // If client is not done sending data, parse UDP block
+     if (strcmp("done", buffer) != 0){
+       splitter = strtok(buffer, "|");
+       filesize = strtok(NULL, "|");
+       legsize = strtok(NULL, "|");
+       leg_char = *strtok(NULL, "|");
+       data = strtok(NULL, "|");
+
+       strcpy(filename, splitter);
+
+       leg_num = (int)log2(abs((double)leg_char));
+
+       if (data != NULL){
+	 strcpy(octolegs[leg_num], data);
+	 octolegs[leg_num][atoi(legsize)] = '\0';
+       }
      }
-     
-     // inet_ntoa prints user friendly representation of the
-     // ip address
-     /* buffer[len] = '\0'; */
-     /* printf("received: '%s' from client %s on port %d\n", buffer, */
-     /* 	   inet_ntoa(client_address.sin_addr),ntohs(client_address.sin_port)); */
-     
-     
-     // send same content back to the client ("echo")
-     /* int sent_len = sendto(sock, buffer, len, 0, (struct sockaddr *)&client_address, */
-     /* 			  client_address_len); */
-     /* printf("server sent back message:%d\n",sent_len); */
 
+     // if client is done sending data, write data to file
+     if (strcmp("done", buffer) == 0){
+       // Form Octoblock
+       memset(octoblock, '\0', sizeof(octoblock));
+       for (int i = 0; i < 8; i++){
+	 strcat(octoblock, octolegs[i]);
+       }
+
+       // Create new folder for files (check if folder exists first)
+       struct stat st = {0};
+       if (stat("./downloads", &st) == -1){
+	 mkdir("./downloads", 0700);
+       }
+
+       // Open new file in directory   
+       FILE *f_output;
+       char filepath[100] = "./downloads/";
+       strcat(filepath, filename);
+       printf("Wrote to file: %s\n", filepath);
+
+       // Write octoblock to file
+       f_output = fopen(filepath, "wb");
+       fseek(f_output, 0, SEEK_END);
+       fwrite(octoblock, sizeof(char), strlen(octoblock), f_output);
+       fclose(f_output);
+     }
   }
+
   close(sock);
   return 0;
 }
