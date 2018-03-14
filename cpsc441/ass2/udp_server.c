@@ -19,6 +19,14 @@
 #include <string.h>
 #define PORT 8001
 
+// Converts integer to string
+char* itoa(int i){
+  int len = snprintf(NULL, 0, "%d", i);
+  char *str = (char*)malloc(len + 1);
+  sprintf(str, "%d", i);
+  return str;
+}
+
 int main(int argc, char *argv[]) {
   // port to start the server on
   int SERVER_PORT = PORT;
@@ -73,7 +81,6 @@ int main(int argc, char *argv[]) {
      recvfrom(sock, buffer, sizeof(buffer), 0,
 	      (struct sockaddr *)&client_address, &client_address_len);
 
-     printf("%s\n", buffer);
      // If client is not done sending data, parse UDP block
      if (strcmp("done", buffer) != 0){
        splitter = strtok(buffer, "|");
@@ -85,6 +92,10 @@ int main(int argc, char *argv[]) {
        strcpy(filename, splitter);
 
        leg_num = (int)log2(abs((double)leg_char));
+
+       // Acknowledge by sending back leg number
+       sendto(sock, itoa(leg_num), sizeof(itoa(leg_num)), 0,
+	      (struct sockaddr *)&client_address, sizeof(client_address));
 
        if (data != NULL){
 	 strcpy(octolegs[leg_num], data);
@@ -98,6 +109,7 @@ int main(int argc, char *argv[]) {
        memset(octoblock, '\0', sizeof(octoblock));
        for (int i = 0; i < 8; i++){
 	 strcat(octoblock, octolegs[i]);
+	 memset(octolegs[i],'\0', strlen(octolegs[i]));
        }
 
        // Create new folder for files (check if folder exists first)
@@ -107,15 +119,23 @@ int main(int argc, char *argv[]) {
        }
 
        // Open new file in directory   
-       FILE *f_output;
        char filepath[100] = "./downloads/";
        strcat(filepath, filename);
-       printf("Wrote to file: %s\n", filepath);
 
        // Write octoblock to file
-       f_output = fopen(filepath, "wb");
-       fseek(f_output, 0, SEEK_END);
+       FILE *f_output = fopen(filepath, "rw+");
+
+       // If file exists, seek to end
+       if (f_output != NULL){
+	 fseek(f_output, 0, SEEK_END);
+	 //printf("Writing to position: %ld\n", ftell(f_output));
+       }
+       // If file does not exist, create it
+       else
+	 f_output = fopen(filepath, "w");
+	 
        fwrite(octoblock, sizeof(char), strlen(octoblock), f_output);
+       printf("Wrote %d bytes to file: %s\n",strlen(octoblock), filepath);
        fclose(f_output);
      }
   }
